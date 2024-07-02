@@ -1,18 +1,16 @@
 #include <iostream>
-#include "my_function.h"
+#include "Editor.cpp"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 int main()
 {
-    struct termios orig_termios;
-    enableRawMode(&orig_termios);
+    editorConfig EditorConfig;
+    Editor editor;
     while (true) 
     {
-       editorRefreshScreen();
-       if(editorProcessKeypress()) break;
+       editor.Draw();
+       if(editor.ProcessKeypress()) break;
     };
-    editorRefreshScreen();
-    disableRawMode(&orig_termios);
     return EXIT_SUCCESS;
 }
