@@ -1,14 +1,16 @@
 #include "editorConfig.cpp"
+#include "AppendBuffer.cpp"
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <cerrno>
 
 class Editor
 {
 private:
-    editorConfig* edCon;
-    int screenrows;
-    int screencols;
+    AppendBuffer * buffer;
+    int screenrows, screencols;
+    int cursor_x, cursor_y;
 public:
     Editor();
     ~Editor();
@@ -20,28 +22,37 @@ private:
     void DrawRows();
     int getWindowSize();
     int getCursorPosition();
+    void MoveCursor(char key); 
 };
 
-Editor::Editor()
+Editor::Editor():cursor_x{0},cursor_y{0}
 {
-
+    buffer = new AppendBuffer;
+    getWindowSize();
 }
 
 Editor::~Editor()
 {
-    RefreshScreen();
+    buffer->append("\x1b[2J", 4);
+    buffer->append("\x1b[?25h", 6);
+    write(STDIN_FILENO, buffer->b, buffer->len);
 }
 
 void Editor::RefreshScreen() {
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
+//   buffer->append("\x1b[2J", 4);
+  buffer->append("\x1b[H", 3);
 }
 
-char Editor::ReadKey()
-{
+char Editor::ReadKey() {
     int nread;
     char c;
-    while ((nread = read(STDIN_FILENO, &c, 1)) != 1);
+    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+        if (nread == -1 && errno != EAGAIN) {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+    }
+    
     if (c == 27) { // If the key is 'Esc'
         char seq[3];
         if (read(STDIN_FILENO, &seq[0], 1) == 0) return 27;
@@ -49,22 +60,30 @@ char Editor::ReadKey()
 
         if (seq[0] == '[') {
             switch (seq[1]) {
-                case 'A': return 'k'; // Up arrow
-                case 'B': return 'j'; // Down arrow
-                case 'C': return 'l'; // Right arrow
-                case 'D': return 'h'; // Left arrow
+                case 'A': // Up arrow
+                    if (cursor_y != 0) cursor_y--;
+                    return '\0';
+                case 'B': // Down arrow
+                    if (cursor_y != screenrows - 1) cursor_y++;
+                    return '\0';
+                case 'C': // Right arrow
+                    if (cursor_x != screencols - 1) cursor_x++;
+                    return '\0';
+                case 'D': // Left arrow
+                    if (cursor_x != 0) cursor_x--;
+                    return '\0';
             }
         }
+        return c; // If other escape sequences, ignore
     }
-    return c;
-}
 
+    return c; // Return the character read if not an escape sequence
+}
 
 bool Editor::ProcessKeypress() {
   char c = ReadKey();
   switch (c) {
     case 27:
-      RefreshScreen();
       return true;
       break;
   }
@@ -74,18 +93,25 @@ bool Editor::ProcessKeypress() {
 void Editor::DrawRows() {
   getWindowSize();
   for (int y{0}; y < screenrows; y++) {
-    write(STDOUT_FILENO, "~", 1);
+    buffer->append("~",1);
+    buffer->append("\x1b[K",3);
     if (y < screenrows - 1) {
-      write(STDOUT_FILENO, "\r\n", 2);
+      buffer->append("\r\n", 2);
     }
   }
 }
 
 void Editor::Draw()
 {
+    buffer->append("\x1b[?25l", 6);
     RefreshScreen();
     DrawRows();
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cursor_y + 1, cursor_x + 1);
+    buffer->append(buf, strlen(buf));
+    buffer->append("\x1b[?25h", 6);
+    write(STDOUT_FILENO, buffer->b, buffer->len);
+    buffer->free();
 }
 
 int Editor::getCursorPosition() {
