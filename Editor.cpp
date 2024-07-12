@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <sys/ioctl.h>
@@ -18,7 +19,7 @@ struct Row
 class Editor
 {
 private:
-    std::string buffer;
+    std::string buffer, filename;
     int screenrows, screencols;
     int cursor_x, cursor_y;
     int numrows, rowoff, coloff;
@@ -35,6 +36,7 @@ public:
 private:
     char ReadKey();
     void DrawRows();
+    void DrawStatusBar();
     int getWindowSize();
     int getCursorPosition();
     void scroll();
@@ -100,7 +102,7 @@ char Editor::ReadKey()
                     {
                     case '3': // delete
                         cursor_x++;
-                        return '\b';
+                        return '\0';
                     case '1':
                     case '7':
                         cursor_x = 0;
@@ -109,11 +111,11 @@ char Editor::ReadKey()
                     case '8':
                         cursor_x = screencols - 1;
                         return '\0';
-                    case '5':
-                        cursor_y = 0;
+                    case '5': //page up
+                        cursor_y = rowoff;
                         return '\0';
-                    case '6':
-                        cursor_y = screenrows - 1;
+                    case '6': //page down
+                        cursor_y = rowoff + numrows;
                         return '\0';
                     }
                 }
@@ -192,17 +194,20 @@ void Editor::DrawRows()
     for (int y{0}; y < screenrows; y++)
     {
         int filerow = y + rowoff;
-        if (filerow >= numrows)
+        if (filerow > numrows+1)
         {
             buffer.append("~");
+        }else if(filerow == numrows+1){
+            DrawStatusBar();
         }
-        else
+        else if(filerow < rows.size())
         {
             int len = rows[filerow].size - coloff;
             if (len < 0)
                 len = 0;
             if (len > screencols)
                 len = screencols + 1;
+            //buffer.append(std::to_string(filerow+1)+"  ");
             buffer.append(rows[filerow].chars.substr(coloff, len));
         }
         buffer.append("\x1b[K");
@@ -274,6 +279,9 @@ void Editor::Open(const std::string &filename)
         std::cerr << "Could not open the file " << filename << std::endl;
         return;
     }
+    // set filename
+    std::filesystem::path fs_path(filename);
+    this->filename = fs_path.filename().string();
 
     std::string line;
     while (std::getline(file, line))
@@ -313,4 +321,22 @@ void Editor::scroll()
     {
         coloff = cursor_x - screencols + 1;
     }
+}
+
+void Editor::DrawStatusBar()
+{
+    std::string str = "";
+    buffer.append("\x1b[1;7m");
+    if(!filename.empty()){
+        str+="File name: " + filename;
+    }else{str+="[NO NAME] ";}
+    str+=" "+std::to_string(cursor_y + 1)+" : "+std::to_string(cursor_x + 1)+"   EXIT:[ESC]";
+    buffer.append(str);
+    int len = str.length();
+    while( len < screencols)
+    {
+        buffer.append(" ");
+        len++;
+    }
+    buffer.append("\x1b[m");
 }
