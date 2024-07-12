@@ -10,10 +10,19 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
-struct Row
+class Row
 {
+public:
     int size;
     std::string chars;
+    Row():size(1),chars(" "){};
+    ~Row(){};
+    void insert_char(char c, int at);
+};
+
+void Row::insert_char(char c, int at)
+{
+    chars.insert(at, 1, c);
 };
 
 class Editor
@@ -40,6 +49,8 @@ private:
     int getWindowSize();
     int getCursorPosition();
     void scroll();
+    void editRow(char c);
+    bool escCase(char c);
 };
 
 Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{0}, rowoff{0}, coloff{0}
@@ -71,7 +82,6 @@ char Editor::ReadKey()
 {
     int nread;
     char c;
-    auto *row = (cursor_y >= numrows) ? NULL : &rows[cursor_y];
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1)
     {
         if (nread == -1 && errno != EAGAIN)
@@ -80,100 +90,7 @@ char Editor::ReadKey()
             exit(EXIT_FAILURE);
         }
     }
-
-    if (c == 27)
-    { // If the key is 'Esc'
-        char seq[3];
-        if (read(STDIN_FILENO, &seq[0], 1) == 0)
-            return 27;
-        if (read(STDIN_FILENO, &seq[1], 1) == 0)
-            return 27;
-
-        if (seq[0] == '[')
-        {
-            if (seq[1] >= '0' && seq[1] <= '9')
-            {
-                if (read(STDIN_FILENO, &seq[2], 1) != 1)
-                    return '\x1b';
-                if (seq[2] == '~')
-                {
-                    getWindowSize();
-                    switch (seq[1])
-                    {
-                    case '3': // delete
-                        cursor_x++;
-                        return '\0';
-                    case '1':
-                    case '7':
-                        cursor_x = 0;
-                        return '\0';
-                    case '4':
-                    case '8':
-                        cursor_x = screencols - 1;
-                        return '\0';
-                    case '5': //page up
-                        cursor_y = rowoff;
-                        return '\0';
-                    case '6': //page down
-                        cursor_y = rowoff + numrows;
-                        return '\0';
-                    }
-                }
-            }
-            else
-            {
-                switch (seq[1])
-                {
-                case 'A': // Up arrow
-                    if (cursor_y != 0)
-                        cursor_y--;
-                    return '\0';
-                case 'B': // Down arrow
-                    if (cursor_y < numrows)
-                        cursor_y++;
-                    return '\0';
-                case 'C': // Right arrow
-                    if (row && cursor_x < row->size)
-                    {
-                        cursor_x++;
-                    }else if (row && cursor_x == row->size)
-                    {
-                        cursor_y++;
-                        cursor_x = 0;
-                    }
-                    
-                    return '\0';
-                case 'D': // Left arrow
-                    if (cursor_x != 0){
-                        cursor_x--;
-                    }else if(cursor_y > 0){
-                        cursor_y--;
-                        cursor_x = rows[cursor_y].size;
-                    }
-                    return '\0';
-                case 'H':
-                    cursor_x = 0;
-                    return '\0';
-                case 'F':
-                    cursor_x = screencols - 1;
-                    return '\0';
-                }
-            }
-        }
-        else if (seq[0] == 'O')
-        {
-            switch (seq[1])
-            {
-            case 'H':
-                cursor_x = 0;
-                return '\0';
-            case 'F':
-                cursor_x = screencols - 1;
-                return '\0';
-            }
-        }
-    }
-    return c; // Return the character read if not an escape sequence
+    return c;
 }
 
 bool Editor::ProcessKeypress()
@@ -182,8 +99,10 @@ bool Editor::ProcessKeypress()
     switch (c)
     {
     case 27:
-        return true;
+        return escCase(c);
         break;
+    default:
+        editRow(c);
     }
     return false;
 }
@@ -194,20 +113,21 @@ void Editor::DrawRows()
     for (int y{0}; y < screenrows; y++)
     {
         int filerow = y + rowoff;
-        if (filerow > numrows+1)
+        if (filerow > numrows + 1)
         {
             buffer.append("~");
-        }else if(filerow == numrows+1){
+        }
+        else if (filerow == numrows + 1)
+        {
             DrawStatusBar();
         }
-        else if(filerow < rows.size())
+        else if (filerow < rows.size())
         {
             int len = rows[filerow].size - coloff;
             if (len < 0)
                 len = 0;
             if (len > screencols)
                 len = screencols + 1;
-            //buffer.append(std::to_string(filerow+1)+"  ");
             buffer.append(rows[filerow].chars.substr(coloff, len));
         }
         buffer.append("\x1b[K");
@@ -246,7 +166,7 @@ int Editor::getCursorPosition()
             break;
         i++;
     }
-    buf[i] = '\0';
+    buf[i] = false;
     if (buf[0] != '\x1b' || buf[1] != '[')
         return -1;
     if (sscanf(&buf[2], "%d;%d", &screenrows, &screencols) != 2)
@@ -327,16 +247,138 @@ void Editor::DrawStatusBar()
 {
     std::string str = "";
     buffer.append("\x1b[1;7m");
-    if(!filename.empty()){
-        str+="File name: " + filename;
-    }else{str+="[NO NAME] ";}
-    str+=" "+std::to_string(cursor_y + 1)+" : "+std::to_string(cursor_x + 1)+"   EXIT:[ESC]";
+    if (!filename.empty())
+    {
+        str += "File name: " + filename;
+    }
+    else
+    {
+        str += "[NO NAME] ";
+    }
+    str += " " + std::to_string(cursor_y + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]";
     buffer.append(str);
     int len = str.length();
-    while( len < screencols)
+    while (len < screencols)
     {
         buffer.append(" ");
         len++;
     }
     buffer.append("\x1b[m");
+}
+
+void Editor::editRow(char c)
+{
+    int filerow = cursor_y + rowoff;
+    Row *row = &rows[filerow];
+    if(row->size >= screencols-1)
+    {
+        rows.reserve(rows.size()+1);
+        rows.insert(rows.begin() + filerow+1, Row());
+        cursor_y++;
+        cursor_x = 0;
+        return;
+    }
+    row->insert_char(c, cursor_x);
+    row->size++;
+    cursor_x++;
+    
+}
+
+bool Editor::escCase(char c)
+{
+    char seq[3];
+    auto *row = (cursor_y >= numrows) ? NULL : &rows[cursor_y];
+    if (read(STDIN_FILENO, &seq[0], 1) == 0)
+        return true;
+    if (read(STDIN_FILENO, &seq[1], 1) == 0)
+        return true;
+
+    if (seq[0] == '[')
+    {
+        if (seq[1] >= '0' && seq[1] <= '9')
+        {
+            if (read(STDIN_FILENO, &seq[2], 1) != 1)
+                return true;
+            if (seq[2] == '~')
+            {
+                getWindowSize();
+                switch (seq[1])
+                {
+                case '3': // delete
+                    cursor_x++;
+                    return false;
+                case '1':
+                case '7':
+                    cursor_x = 0;
+                    return false;
+                case '4':
+                case '8':
+                    cursor_x = screencols - 1;
+                    return false;
+                case '5': // page up
+                    cursor_y = rowoff;
+                    return false;
+                case '6': // page down
+                    cursor_y = rowoff + numrows;
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            switch (seq[1])
+            {
+            case 'A': // Up arrow
+                if (cursor_y != 0)
+                    cursor_y--;
+                return false;
+            case 'B': // Down arrow
+                if (cursor_y < numrows)
+                    cursor_y++;
+                return false;
+            case 'C': // Right arrow
+                if (row && cursor_x < row->size)
+                {
+                    cursor_x++;
+                }
+                else if (row && cursor_x == row->size)
+                {
+                    cursor_y++;
+                    cursor_x = 0;
+                }
+
+                return false;
+            case 'D': // Left arrow
+                if (cursor_x != 0)
+                {
+                    cursor_x--;
+                }
+                else if (cursor_y > 0)
+                {
+                    cursor_y--;
+                    cursor_x = rows[cursor_y].size;
+                }
+                return false;
+            case 'H':
+                cursor_x = 0;
+                return false;
+            case 'F':
+                cursor_x = screencols - 1;
+                return false;
+            }
+        }
+    }
+    else if (seq[0] == 'O')
+    {
+        switch (seq[1])
+        {
+        case 'H':
+            cursor_x = 0;
+            return false;
+        case 'F':
+            cursor_x = screencols - 1;
+            return false;
+        }
+    }
+    return false;
 }
