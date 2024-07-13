@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <sys/ioctl.h>
 #include <unistd.h>
 #include <cerrno>
 #include <cstdio>
@@ -15,7 +14,7 @@ class Row
 public:
     int size;
     std::string chars;
-    Row():size(1),chars(" "){};
+    Row() : size(1), chars(" "){};
     ~Row(){};
     void insert_char(char c, int at);
 };
@@ -101,6 +100,10 @@ bool Editor::ProcessKeypress()
     case 27:
         return escCase(c);
         break;
+    case 127: // backspace
+        break;
+    case '\r': // enter
+        break;
     default:
         editRow(c);
     }
@@ -113,11 +116,7 @@ void Editor::DrawRows()
     for (int y{0}; y < screenrows; y++)
     {
         int filerow = y + rowoff;
-        if (filerow > numrows + 1)
-        {
-            buffer.append("~");
-        }
-        else if (filerow == numrows + 1)
+        if (y == screenrows - 1)
         {
             DrawStatusBar();
         }
@@ -130,7 +129,9 @@ void Editor::DrawRows()
                 len = screencols + 1;
             buffer.append(rows[filerow].chars.substr(coloff, len));
         }
+
         buffer.append("\x1b[K");
+
         if (y < screenrows - 1)
         {
             buffer.append("\r\n");
@@ -225,22 +226,22 @@ void Editor::Open(const std::string &filename)
 
 void Editor::scroll()
 {
-    if (cursor_y < rowoff)
-    {
-        rowoff = cursor_y;
-    }
-    if (cursor_y >= rowoff + screenrows)
-    {
-        rowoff = cursor_y - screenrows + 1;
-    }
-    if (cursor_x < coloff)
-    {
-        coloff = cursor_x;
-    }
-    if (cursor_x >= coloff + screencols)
-    {
-        coloff = cursor_x - screencols + 1;
-    }
+    // if (cursor_y < rowoff)
+    // {
+    //     rowoff = cursor_y;
+    // }
+    // if (cursor_y >= rowoff + screenrows)
+    // {
+    //     rowoff = cursor_y - screenrows + 1;
+    // }
+    // if (cursor_x < coloff)
+    // {
+    //     coloff = cursor_x;
+    // }
+    // if (cursor_x >= coloff + screencols)
+    // {
+    //     coloff = cursor_x - screencols + 1;
+    // }
 }
 
 void Editor::DrawStatusBar()
@@ -255,7 +256,7 @@ void Editor::DrawStatusBar()
     {
         str += "[NO NAME] ";
     }
-    str += " " + std::to_string(cursor_y + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]";
+    str += " " + std::to_string(cursor_y + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(numrows);
     buffer.append(str);
     int len = str.length();
     while (len < screencols)
@@ -266,22 +267,82 @@ void Editor::DrawStatusBar()
     buffer.append("\x1b[m");
 }
 
+// void Editor::editRow(char c)
+// {
+//     int filerow = cursor_y + rowoff;
+//     Row *row = &rows[filerow];
+//     Row *second_row = &rows[filerow + 1];
+
+//     if (cursor_x >= screencols - 1)
+//     {
+//         numrows++;
+//         rows.push_back(Row());
+
+//         cursor_y++;
+//         cursor_x = 0;
+//         row = second_row;
+//     }
+//     else if (row->size >= screencols - 1)
+//     {
+//         second_row->size++;
+//         second_row->chars = row->chars[row->chars.size() - 1] + second_row->chars;
+//         row->chars.pop_back();
+//     }
+
+//     row->size++;
+//     row->insert_char(c, cursor_x);
+//     cursor_x++;
+// }
+
 void Editor::editRow(char c)
 {
     int filerow = cursor_y + rowoff;
-    Row *row = &rows[filerow];
-    if(row->size >= screencols-1)
+    if (filerow >= rows.size())
     {
-        rows.reserve(rows.size()+1);
-        rows.insert(rows.begin() + filerow+1, Row());
+        return; // Safe guard in case filerow is out of bounds
+    }
+
+    Row *row = &rows[filerow];
+
+    if (cursor_x >= screencols - 1)
+    {
+        // If cursor is at the end of screen, move to next row
+        numrows++;
+        rows.push_back(Row());
         cursor_y++;
         cursor_x = 0;
-        return;
+        row = &rows[filerow + 1];
     }
+    else if (row->size >= screencols - 1)
+    {
+        if (filerow == numrows - 1)
+        {
+            Row newRow;
+            newRow.size = 1;
+            newRow.chars = row->chars.back();
+            rows.insert(rows.begin() + filerow + 1, newRow);
+            numrows++;
+        }
+        else
+        {
+            Row *second_row = &rows[filerow + 1];
+            second_row->size++;
+            second_row->chars = row->chars.back() + second_row->chars; // Move the last character to the new row
+        }
+        // Split the row if it exceeds screen columns
+        row->chars.pop_back();
+        row->size--;
+
+        if (cursor_x > row->size)
+        {
+            cursor_y++;
+            cursor_x = 1; // After moving the last char, the new row starts at position 1
+        }
+    }
+
     row->insert_char(c, cursor_x);
     row->size++;
     cursor_x++;
-    
 }
 
 bool Editor::escCase(char c)
@@ -319,7 +380,7 @@ bool Editor::escCase(char c)
                     cursor_y = rowoff;
                     return false;
                 case '6': // page down
-                    cursor_y = rowoff + numrows;
+                    cursor_y = rowoff + numrows - 1;
                     return false;
                 }
             }
@@ -333,7 +394,7 @@ bool Editor::escCase(char c)
                     cursor_y--;
                 return false;
             case 'B': // Down arrow
-                if (cursor_y < numrows)
+                if (cursor_y + 1 < numrows)
                     cursor_y++;
                 return false;
             case 'C': // Right arrow
@@ -341,7 +402,7 @@ bool Editor::escCase(char c)
                 {
                     cursor_x++;
                 }
-                else if (row && cursor_x == row->size)
+                else if (cursor_x == row->size && (cursor_y + 1 != rows.size()) && row)
                 {
                     cursor_y++;
                     cursor_x = 0;
