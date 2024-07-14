@@ -50,6 +50,9 @@ private:
     void scroll();
     void editRow(char c);
     bool escCase(char c);
+    void enterCase();
+    void tabCase();
+    void backCase();
 };
 
 Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{0}, rowoff{0}, coloff{0}
@@ -103,6 +106,10 @@ bool Editor::ProcessKeypress()
     case 127: // backspace
         break;
     case '\r': // enter
+        enterCase();
+        break;
+    case '\t': // tab
+        tabCase();
         break;
     default:
         editRow(c);
@@ -267,33 +274,6 @@ void Editor::DrawStatusBar()
     buffer.append("\x1b[m");
 }
 
-// void Editor::editRow(char c)
-// {
-//     int filerow = cursor_y + rowoff;
-//     Row *row = &rows[filerow];
-//     Row *second_row = &rows[filerow + 1];
-
-//     if (cursor_x >= screencols - 1)
-//     {
-//         numrows++;
-//         rows.push_back(Row());
-
-//         cursor_y++;
-//         cursor_x = 0;
-//         row = second_row;
-//     }
-//     else if (row->size >= screencols - 1)
-//     {
-//         second_row->size++;
-//         second_row->chars = row->chars[row->chars.size() - 1] + second_row->chars;
-//         row->chars.pop_back();
-//     }
-
-//     row->size++;
-//     row->insert_char(c, cursor_x);
-//     cursor_x++;
-// }
-
 void Editor::editRow(char c)
 {
     int filerow = cursor_y + rowoff;
@@ -442,4 +422,36 @@ bool Editor::escCase(char c)
         }
     }
     return false;
+}
+
+void Editor::enterCase()
+{
+    int filerow = cursor_y + rowoff;
+    Row *row = &rows[filerow];
+    Row newRow;
+    if (cursor_x < screencols - 1)
+    {
+        int len = row->chars.length();
+        std::string newstr = row->chars.substr(cursor_x, len),
+                    oldstr = row->chars.substr(0, cursor_x);
+        row->size = oldstr.length();
+        newRow.size = newstr.length();
+        row->chars = oldstr;
+        newRow.chars = newstr;
+    }
+    rows.insert(rows.begin() + filerow + 1, newRow);
+    numrows++;
+    cursor_y++;
+    cursor_x = 0;
+}
+
+void Editor::tabCase()
+{
+    for (size_t i{0}; i < 4; i++)
+        editRow(' ');
+}
+
+void Editor::backCase()
+{
+    
 }
