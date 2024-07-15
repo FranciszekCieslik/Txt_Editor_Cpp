@@ -104,6 +104,7 @@ bool Editor::ProcessKeypress()
         return escCase(c);
         break;
     case 127: // backspace
+        backCase();
         break;
     case '\r': // enter
         enterCase();
@@ -263,7 +264,7 @@ void Editor::DrawStatusBar()
     {
         str += "[NO NAME] ";
     }
-    str += " " + std::to_string(cursor_y + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(numrows);
+    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(numrows);
     buffer.append(str);
     int len = str.length();
     while (len < screencols)
@@ -429,20 +430,42 @@ void Editor::enterCase()
     int filerow = cursor_y + rowoff;
     Row *row = &rows[filerow];
     Row newRow;
-    if (cursor_x < screencols - 1)
+    if (cursor_x == 0)
     {
-        int len = row->chars.length();
-        std::string newstr = row->chars.substr(cursor_x, len),
-                    oldstr = row->chars.substr(0, cursor_x);
-        row->size = oldstr.length();
-        newRow.size = newstr.length();
-        row->chars = oldstr;
-        newRow.chars = newstr;
+        rows.insert(rows.begin() + filerow, newRow);
     }
-    rows.insert(rows.begin() + filerow + 1, newRow);
+    else if (cursor_x >= row->chars.size())
+    {
+        rows.insert(rows.begin() + filerow + 1, newRow);
+    }
+    else
+    {
+        std::string tailstr = row->chars.substr(cursor_x, screencols),
+                    tipstr = row->chars.substr(0, cursor_x);
+        row->size = tipstr.length();
+        row->chars = tipstr;
+        if(filerow+1>=numrows){
+            rows.push_back(Row());
+            numrows++;
+        }
+        row = &rows[filerow + 1];
+        if (row->chars.size() + tailstr.length() < screencols - 1)
+        {
+            row->chars = tailstr + row->chars;
+            row->size = row->chars.size();
+            return;
+        }
+        else
+        {
+            newRow.chars = tailstr;
+            newRow.size = newRow.chars.size();
+            rows.insert(rows.begin() + filerow + 1, newRow);
+        }
+    }
+    cursor_x = 0;
     numrows++;
     cursor_y++;
-    cursor_x = 0;
+    return;
 }
 
 void Editor::tabCase()
@@ -453,5 +476,51 @@ void Editor::tabCase()
 
 void Editor::backCase()
 {
-    
+    int filerow = cursor_y + rowoff;
+    if (filerow >= rows.size())
+    {
+        return; // Safe guard in case filerow is out of bounds
+    }
+
+    Row *row = &rows[filerow];
+    if (row->chars.size() <= 1)
+    {
+        rows.erase(rows.begin() + filerow);
+        numrows--;
+        if (filerow > 0)
+        {
+            cursor_x = rows[filerow - 1].chars.size();
+            cursor_y--;
+            return;
+        }
+        cursor_x = 0;
+        return;
+    }
+    else
+    {
+        if (cursor_x <= 0)
+        {
+            if (filerow <= 0)
+            {
+                return;
+            }
+            int filler = screencols - rows[filerow - 1].size - 1;
+            std::string tailstr = row->chars.substr(filler + 1, screencols),
+                        tipstr = row->chars.substr(0, filler + 1);
+            cursor_x = rows[filerow - 1].chars.size();
+            cursor_y--;
+            rows[filerow - 1].size = screencols;
+            rows[filerow - 1].chars += tipstr;
+            row->chars = tailstr;
+            row->size = row->chars.size();
+            return;
+        }
+        int len = row->chars.length();
+        std::string tailstr = row->chars.substr(cursor_x, len),
+                    tipstr = row->chars.substr(0, cursor_x);
+        tipstr.pop_back();
+        row->chars = tipstr + tailstr;
+        row->size--;
+    }
+    cursor_x--;
 }
