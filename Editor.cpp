@@ -38,7 +38,7 @@ private:
     void enterCase();
     void tabCase();
     void backCase();
-    void delCase(); 
+    void delCase();
 };
 
 Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{0}, rowoff{0}, coloff{0}
@@ -486,9 +486,9 @@ void Editor::backCase()
             {
                 return;
             }
-            int filler = screencols - rows[filerow - 1].size() - 1;
-            std::string tailstr = row->substr(filler + 1, screencols),
-                    tipstr = row->substr(0, filler + 1);
+            int filler = screencols - rows[filerow - 1].size();
+            std::string tailstr = (filler < row->size()) ? row->substr(filler, screencols - filler) : "";
+            std::string tipstr = (filler >= 0) ? row->substr(0, filler) : *row;
             cursor_x = rows[filerow - 1].size();
             cursor_y--;
 
@@ -509,13 +509,12 @@ void Editor::backCase()
 void Editor::delCase()
 {
     int filerow = cursor_y + rowoff;
-    if(rows[filerow].size()<=1)
+    if (rows[filerow].size() <= 1)
     {
         rows.erase(rows.begin() + filerow);
         numrows--;
     }
-    else if()
-    {
-
-    }
+    // else if ()
+    // {
+    // }
 }
