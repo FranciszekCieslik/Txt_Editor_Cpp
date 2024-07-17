@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstdio>
+#include <algorithm>
+#include <cctype>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
@@ -16,7 +18,7 @@ private:
     int screenrows, screencols;
     int cursor_x, cursor_y;
     int numrows, rowoff, coloff;
-    std::vector<std::string> rows;
+    std::vector<std::string> rows = {""};
 
 public:
     Editor();
@@ -39,9 +41,11 @@ private:
     void tabCase();
     void backCase();
     void delCase();
+    void str_trim(std::string &str);
+    void saveToFileText(std::vector<std::string> &vec, const std::string &filename);
 };
 
-Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{0}, rowoff{0}, coloff{0}
+Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{1}, rowoff{0}, coloff{0}
 {
     getWindowSize();
 }
@@ -188,6 +192,8 @@ int Editor::getWindowSize()
 
 void Editor::Open(const std::string &filename)
 {
+    numrows = 0;
+    rows.pop_back();
     std::ifstream file(filename);
     if (!file.is_open())
     {
@@ -248,7 +254,7 @@ void Editor::DrawStatusBar()
     {
         str += "[NO NAME] ";
     }
-    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(numrows);
+    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(rows[cursor_y + rowoff].size());
     buffer.append(str);
     int len = str.length();
     while (len < screencols)
@@ -468,6 +474,8 @@ void Editor::backCase()
         {
             rows.erase(rows.begin() + filerow);
             numrows--;
+        }else{
+            *row = "";
         }
         if (filerow > 0)
         {
@@ -509,29 +517,71 @@ void Editor::backCase()
 void Editor::delCase()
 {
     int filerow = cursor_y + rowoff;
-    auto * row = &rows[filerow];
-    if (row->size() <= 1)
+    if (filerow >= numrows) return; // Ensure filerow is within bounds
+
+    std::string& row = rows[filerow];
+
+    if (row.size() <= 1)
     {
-        rows.erase(rows.begin() + filerow);
-        numrows--;
+        if (numrows > 1)
+        {
+            rows.erase(rows.begin() + filerow);
+            numrows--;
+        }
+        else
+        {
+            row = "";
+            cursor_x = 0;
+        }
         return;
     }
 
-    if(cursor_x >= row->size()){
-        if(filerow >= numrows){
-            return;
-        }
-        cursor_x = 0;
-        cursor_y++;
-        backCase();
-        return;
-    }
-    
-    if (cursor_x < row->size())
+    if (cursor_x >= row.size())
     {
-        auto tipstr = row->substr(0, cursor_x);
-        auto tailstr = row->substr(cursor_x+1,row->size());
-        *row = tipstr + tailstr;
+        if (filerow < numrows - 1)
+        {
+            cursor_x = 0;
+            cursor_y++;
+            backCase();
+        }
         return;
     }
+
+    if (cursor_x < row.size() - 1)
+    {
+        std::string tipstr = row.substr(0, cursor_x);
+        std::string tailstr = row.substr(cursor_x + 1, row.size() - cursor_x - 1);
+        row = tipstr + tailstr;
+        return;
+    }
+
+    // If cursor_x is at the last character, just remove that character
+    row = row.substr(0, row.size() - 1);
+}
+
+void Editor::str_trim(std::string &str)
+{
+    str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char ch)
+                           { return !std::isspace(ch); })
+                  .base(),
+              str.end());
+}
+
+void Editor::saveToFileText(std::vector<std::string> &vec, const std::string &filename)
+{
+    std::ofstream outFile(filename);
+
+    if (!outFile)
+    {
+        std::cerr << "Error opening file for writing: " << filename << std::endl;
+        return;
+    }
+
+    for (auto &str : vec)
+    {
+        str_trim(str);
+        outFile << str << '\n'; // Użyj '\n' jako separatora linii
+    }
+
+    outFile.close();
 }
