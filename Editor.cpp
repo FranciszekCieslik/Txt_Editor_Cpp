@@ -509,12 +509,29 @@ void Editor::backCase()
 void Editor::delCase()
 {
     int filerow = cursor_y + rowoff;
-    if (rows[filerow].size() <= 1)
+    auto * row = &rows[filerow];
+    if (row->size() <= 1)
     {
         rows.erase(rows.begin() + filerow);
         numrows--;
+        return;
     }
-    // else if ()
-    // {
-    // }
+
+    if(cursor_x >= row->size()){
+        if(filerow >= numrows){
+            return;
+        }
+        cursor_x = 0;
+        cursor_y++;
+        backCase();
+        return;
+    }
+    
+    if (cursor_x < row->size())
+    {
+        auto tipstr = row->substr(0, cursor_x);
+        auto tailstr = row->substr(cursor_x+1,row->size());
+        *row = tipstr + tailstr;
+        return;
+    }
 }
