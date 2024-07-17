@@ -23,10 +23,11 @@ private:
 public:
     Editor();
     ~Editor();
+    std::string path;
     void RefreshScreen();
     bool ProcessKeypress();
     void Draw();
-    void Open(const std::string &filename);
+    void Open(const std::string &path_to_file);
 
 private:
     char ReadKey();
@@ -34,7 +35,6 @@ private:
     void DrawStatusBar();
     int getWindowSize();
     int getCursorPosition();
-    void scroll();
     void editRow(char c);
     bool escCase(char c);
     void enterCase();
@@ -139,12 +139,11 @@ void Editor::DrawRows()
 
 void Editor::Draw()
 {
-    scroll();
     buffer.append("\x1b[?25l");
     RefreshScreen();
     DrawRows();
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (cursor_y - rowoff) + 1, (cursor_x - coloff) + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (cursor_y) + 1, (cursor_x) + 1);
     buffer.append(buf);
     buffer.append("\x1b[?25h");
     write(STDOUT_FILENO, buffer.c_str(), buffer.size());
@@ -190,18 +189,18 @@ int Editor::getWindowSize()
     }
 }
 
-void Editor::Open(const std::string &filename)
+void Editor::Open(const std::string &path_to_file)
 {
     numrows = 0;
     rows.pop_back();
-    std::ifstream file(filename);
+    std::ifstream file(path_to_file);
     if (!file.is_open())
     {
         std::cerr << "Could not open the file " << filename << std::endl;
         return;
     }
     // set filename
-    std::filesystem::path fs_path(filename);
+    std::filesystem::path fs_path(path_to_file);
     this->filename = fs_path.filename().string();
 
     std::string line;
@@ -222,26 +221,6 @@ void Editor::Open(const std::string &filename)
     file.close();
 }
 
-void Editor::scroll()
-{
-    // if (cursor_y < rowoff)
-    // {
-    //     rowoff = cursor_y;
-    // }
-    // if (cursor_y >= rowoff + screenrows)
-    // {
-    //     rowoff = cursor_y - screenrows + 1;
-    // }
-    // if (cursor_x < coloff)
-    // {
-    //     coloff = cursor_x;
-    // }
-    // if (cursor_x >= coloff + screencols)
-    // {
-    //     coloff = cursor_x - screencols + 1;
-    // }
-}
-
 void Editor::DrawStatusBar()
 {
     std::string str = "";
@@ -254,7 +233,7 @@ void Editor::DrawStatusBar()
     {
         str += "[NO NAME] ";
     }
-    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  " + std::to_string(rows[cursor_y + rowoff].size());
+    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  ";
     buffer.append(str);
     int len = str.length();
     while (len < screencols)
@@ -343,10 +322,10 @@ bool Editor::escCase(char c)
                     cursor_x = screencols - 1;
                     return false;
                 case '5': // page up
-                    cursor_y = rowoff;
+                    cursor_y = 0;
                     return false;
                 case '6': // page down
-                    cursor_y = rowoff + numrows - 1;
+                    cursor_y = screenrows - 2;
                     return false;
                 }
             }
@@ -356,12 +335,21 @@ bool Editor::escCase(char c)
             switch (seq[1])
             {
             case 'A': // Up arrow
-                if (cursor_y != 0)
+                if (cursor_y > 0)
+                {
                     cursor_y--;
+                }else if(rowoff>0){
+                    rowoff--;
+                }
+
                 return false;
             case 'B': // Down arrow
-                if (cursor_y + 1 < numrows)
+                if (cursor_y < screenrows - 2)
+                {
                     cursor_y++;
+                }else if(rowoff + cursor_y + 1 < numrows){
+                    rowoff++;
+                }
                 return false;
             case 'C': // Right arrow
                 if (row && cursor_x < row->size())
@@ -474,7 +462,9 @@ void Editor::backCase()
         {
             rows.erase(rows.begin() + filerow);
             numrows--;
-        }else{
+        }
+        else
+        {
             *row = "";
         }
         if (filerow > 0)
@@ -517,9 +507,10 @@ void Editor::backCase()
 void Editor::delCase()
 {
     int filerow = cursor_y + rowoff;
-    if (filerow >= numrows) return; // Ensure filerow is within bounds
+    if (filerow >= numrows)
+        return; // Ensure filerow is within bounds
 
-    std::string& row = rows[filerow];
+    std::string &row = rows[filerow];
 
     if (row.size() <= 1)
     {

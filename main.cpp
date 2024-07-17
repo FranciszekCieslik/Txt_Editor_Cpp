@@ -8,6 +8,7 @@ int main(int argc, char *argv[])
     editorConfig EditorConfig;
     Editor editor;
     if (argc >= 2)
+        editor.path = argv[1];
         editor.Open(argv[1]);
     while (true) 
     {
