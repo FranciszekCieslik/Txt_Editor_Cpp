@@ -28,6 +28,7 @@ public:
     bool ProcessKeypress();
     void Draw();
     void Open(const std::string &path_to_file);
+    void saveToFileText(const std::string &filename);
 
 private:
     char ReadKey();
@@ -42,7 +43,8 @@ private:
     void backCase();
     void delCase();
     void str_trim(std::string &str);
-    void saveToFileText(std::vector<std::string> &vec, const std::string &filename);
+    void end_line();
+    void begin_line();
 };
 
 Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{1}, rowoff{0}, coloff{0}
@@ -120,11 +122,9 @@ void Editor::DrawRows()
         }
         else if (filerow < rows.size())
         {
-            int len = rows[filerow].size() - coloff;
-            if (len < 0)
-                len = 0;
-            if (len > screencols)
-                len = screencols + 1;
+            int len = screencols + coloff;
+            int size = rows[filerow].size();
+            len = std::min(len, size);
             buffer.append(rows[filerow].substr(coloff, len));
         }
 
@@ -233,7 +233,7 @@ void Editor::DrawStatusBar()
     {
         str += "[NO NAME] ";
     }
-    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + 1) + "   EXIT:[ESC]  ";
+    str += " " + std::to_string(cursor_y + rowoff + 1) + " : " + std::to_string(cursor_x + coloff + 1) + "   EXIT:[ESC]  ";
     buffer.append(str);
     int len = str.length();
     while (len < screencols)
@@ -261,6 +261,7 @@ void Editor::editRow(char c)
         rows.push_back(std::string());
         cursor_y++;
         cursor_x = 0;
+        coloff = 0;
         row = &rows[filerow + 1];
     }
     else if (row->size() >= screencols - 1)
@@ -286,14 +287,14 @@ void Editor::editRow(char c)
         }
     }
 
-    row->insert(cursor_x, 1, c);
+    row->insert(cursor_x + coloff, 1, c);
     cursor_x++;
 }
 
 bool Editor::escCase(char c)
 {
     char seq[3];
-    auto *row = (cursor_y >= numrows) ? NULL : &rows[cursor_y];
+    auto *row = (cursor_y >= numrows) ? NULL : &rows[cursor_y + rowoff];
     if (read(STDIN_FILENO, &seq[0], 1) == 0)
         return true;
     if (read(STDIN_FILENO, &seq[1], 1) == 0)
@@ -315,17 +316,41 @@ bool Editor::escCase(char c)
                     return false;
                 case '1':
                 case '7':
-                    cursor_x = 0;
+                    begin_line();
                     return false;
                 case '4':
                 case '8':
-                    cursor_x = screencols - 1;
+                    end_line();
                     return false;
                 case '5': // page up
-                    cursor_y = 0;
+                    if (cursor_y >= 1)
+                    {
+                        cursor_y = 0;
+                    }
+                    else
+                    {
+                        rowoff -= (screencols - 2);
+                        if (rowoff < 0)
+                        {
+                            rowoff = 0;
+                        };
+                    }
                     return false;
                 case '6': // page down
-                    cursor_y = screenrows - 2;
+                    if (cursor_y < screenrows - 2)
+                    {
+                        cursor_y = screenrows - 2;
+                    }
+                    else
+                    {
+                        rowoff += cursor_y;
+                        if (cursor_y + rowoff > numrows)
+                        {
+                            rowoff = numrows - cursor_y - 1;
+                            cursor_y = numrows - rowoff - 1;
+                        }
+                    }
+
                     return false;
                 }
             }
@@ -338,7 +363,9 @@ bool Editor::escCase(char c)
                 if (cursor_y > 0)
                 {
                     cursor_y--;
-                }else if(rowoff>0){
+                }
+                else if (rowoff > 0)
+                {
                     rowoff--;
                 }
 
@@ -347,19 +374,26 @@ bool Editor::escCase(char c)
                 if (cursor_y < screenrows - 2)
                 {
                     cursor_y++;
-                }else if(rowoff + cursor_y + 1 < numrows){
+                }
+                else if (rowoff + cursor_y + 1 < numrows)
+                {
                     rowoff++;
                 }
                 return false;
             case 'C': // Right arrow
-                if (row && cursor_x < row->size())
+                if (row && cursor_x < screencols - 1 && cursor_x + coloff < row->size() - 1)
                 {
                     cursor_x++;
                 }
-                else if (cursor_x == row->size() && (cursor_y + 1 != rows.size()) && row)
+                else if (cursor_x + coloff + 1 < row->size() - 1)
+                {
+                    coloff += cursor_x;
+                    cursor_x = 0;
+                }
+                else if (cursor_x + coloff >= row->size() - 1 && row)
                 {
                     cursor_y++;
-                    cursor_x = 0;
+                    begin_line();
                 }
 
                 return false;
@@ -368,17 +402,26 @@ bool Editor::escCase(char c)
                 {
                     cursor_x--;
                 }
+                else if (coloff > 0)
+                {
+                    cursor_x = screencols - 1;
+                    coloff -= screencols;
+                    if (coloff < 0)
+                    {
+                        coloff = 0;
+                    }
+                }
                 else if (cursor_y > 0)
                 {
                     cursor_y--;
-                    cursor_x = rows[cursor_y].size();
+                    end_line();
                 }
                 return false;
             case 'H':
-                cursor_x = 0;
+                begin_line();
                 return false;
             case 'F':
-                cursor_x = screencols - 1;
+                end_line();
                 return false;
             }
         }
@@ -388,10 +431,10 @@ bool Editor::escCase(char c)
         switch (seq[1])
         {
         case 'H':
-            cursor_x = 0;
+            begin_line();
             return false;
         case 'F':
-            cursor_x = screencols - 1;
+            end_line();
             return false;
         }
     }
@@ -426,6 +469,7 @@ void Editor::enterCase()
         {
             *row = tailstr + *row;
             cursor_x = 0;
+            coloff = 0;
             cursor_y++;
             return;
         }
@@ -436,6 +480,7 @@ void Editor::enterCase()
         }
     }
     cursor_x = 0;
+    coloff = 0;
     numrows++;
     cursor_y++;
     return;
@@ -496,8 +541,8 @@ void Editor::backCase()
             return;
         }
         int len = row->length();
-        std::string tailstr = row->substr(cursor_x, len),
-                    tipstr = row->substr(0, cursor_x);
+        std::string tailstr = row->substr(cursor_x + coloff, len),
+                    tipstr = row->substr(0, cursor_x + coloff);
         tipstr.pop_back();
         *row = tipstr + tailstr;
     }
@@ -523,6 +568,7 @@ void Editor::delCase()
         {
             row = "";
             cursor_x = 0;
+            coloff = 0;
         }
         return;
     }
@@ -532,6 +578,7 @@ void Editor::delCase()
         if (filerow < numrows - 1)
         {
             cursor_x = 0;
+            coloff = 0;
             cursor_y++;
             backCase();
         }
@@ -540,8 +587,8 @@ void Editor::delCase()
 
     if (cursor_x < row.size() - 1)
     {
-        std::string tipstr = row.substr(0, cursor_x);
-        std::string tailstr = row.substr(cursor_x + 1, row.size() - cursor_x - 1);
+        std::string tipstr = row.substr(0, cursor_x + coloff);
+        std::string tailstr = row.substr(cursor_x + 1 + coloff, row.size() - cursor_x - 1 - coloff);
         row = tipstr + tailstr;
         return;
     }
@@ -558,7 +605,7 @@ void Editor::str_trim(std::string &str)
               str.end());
 }
 
-void Editor::saveToFileText(std::vector<std::string> &vec, const std::string &filename)
+void Editor::saveToFileText(const std::string &filename)
 {
     std::ofstream outFile(filename);
 
@@ -568,11 +615,32 @@ void Editor::saveToFileText(std::vector<std::string> &vec, const std::string &fi
         return;
     }
 
-    for (auto &str : vec)
+    for (auto &str : rows)
     {
         str_trim(str);
         outFile << str << '\n'; // Użyj '\n' jako separatora linii
     }
 
     outFile.close();
+}
+
+void Editor::end_line()
+{
+    auto *row = (cursor_y >= numrows) ? NULL : &rows[cursor_y + rowoff];
+
+    if (row && row->size() <= screencols)
+    {
+        cursor_x = row->size();
+    }
+    else
+    {
+        cursor_x = screencols;
+        coloff = row->size() - screencols;
+    }
+}
+
+void Editor::begin_line()
+{
+    cursor_x = 0;
+    coloff = 0;
 }
