@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cctype>
 
-#define CTRL_KEY(k) ((k) & 0x1f)
+#define CTRL_KEY(k) ((k) & 0x1f) // Macro to handle control key combinations
 
 class Editor
 {
@@ -18,7 +18,7 @@ private:
     int screenrows, screencols;
     int cursor_x, cursor_y;
     int numrows, rowoff, coloff;
-    std::vector<std::string> rows = {""};
+    std::vector<std::string> rows = {""}; // Initialize with an empty row
 
 public:
     Editor();
@@ -49,11 +49,13 @@ private:
 
 Editor::Editor() : cursor_x{0}, cursor_y{0}, numrows{1}, rowoff{0}, coloff{0}
 {
-    getWindowSize();
+    getWindowSize(); // Initialize the screen size
 }
 
 Editor::~Editor()
 {
+    // Clear the screen and reset cursor position on exit
+
     buffer.append("\x1b[2J");
     buffer.append("\x1b[?25h");
     buffer.append("\x1b[0;0H");
@@ -68,7 +70,7 @@ void Editor::RefreshScreen()
     int rowlen = row ? row->size() : 0;
     if (cursor_x > rowlen)
     {
-        cursor_x = rowlen;
+        cursor_x = rowlen; // Adjust cursor position if it's beyond the row length
     }
 }
 
@@ -84,7 +86,7 @@ char Editor::ReadKey()
             exit(EXIT_FAILURE);
         }
     }
-    return c;
+    return c; // Return the read character
 }
 
 bool Editor::ProcessKeypress()
@@ -92,62 +94,62 @@ bool Editor::ProcessKeypress()
     char c = ReadKey();
     switch (c)
     {
-    case 27:
+    case 27: // Escape key
         return escCase(c);
         break;
-    case 127: // backspace
+    case 127: // Backspace
         backCase();
         break;
-    case '\r': // enter
+    case '\r': // Enter
         enterCase();
         break;
-    case '\t': // tab
+    case '\t': // Tab
         tabCase();
         break;
     default:
-        editRow(c);
+        editRow(c); // Add character to the current row
     }
     return false;
 }
 
 void Editor::DrawRows()
 {
-    getWindowSize();
+    getWindowSize(); // Get the current window size
     for (int y{0}; y < screenrows; y++)
     {
         int filerow = y + rowoff;
         if (y == screenrows - 1)
         {
-            DrawStatusBar();
+            DrawStatusBar(); // Draw the status bar on the last row
         }
         else if (filerow < rows.size())
         {
             int len = screencols + coloff;
             int size = rows[filerow].size();
             len = std::min(len, size);
-            buffer.append(rows[filerow].substr(coloff, len));
+            buffer.append(rows[filerow].substr(coloff, len)); // Append the current row to the buffer
         }
 
-        buffer.append("\x1b[K");
+        buffer.append("\x1b[K"); // Clear the rest of the line
 
         if (y < screenrows - 1)
         {
-            buffer.append("\r\n");
+            buffer.append("\r\n"); // Move to the next line
         }
     }
 }
 
 void Editor::Draw()
 {
-    buffer.append("\x1b[?25l");
-    RefreshScreen();
-    DrawRows();
+    buffer.append("\x1b[?25l"); // Hide the cursor
+    RefreshScreen();            // Refresh the screen
+    DrawRows();                 // Draw the rows
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (cursor_y) + 1, (cursor_x) + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (cursor_y) + 1, (cursor_x) + 1); // Move the cursor to the correct position
     buffer.append(buf);
-    buffer.append("\x1b[?25h");
-    write(STDOUT_FILENO, buffer.c_str(), buffer.size());
-    buffer.clear();
+    buffer.append("\x1b[?25h");                          // Show the cursor
+    write(STDOUT_FILENO, buffer.c_str(), buffer.size()); // Write the buffer to the screen
+    buffer.clear();                                      // Clear the buffer
 }
 
 int Editor::getCursorPosition()
@@ -238,10 +240,10 @@ void Editor::DrawStatusBar()
     int len = str.length();
     while (len < screencols)
     {
-        buffer.append(" ");
+        buffer.append(" "); // Fill the rest of the line with spaces
         len++;
     }
-    buffer.append("\x1b[m");
+    buffer.append("\x1b[m"); // Reset colors
 }
 
 void Editor::editRow(char c)
@@ -287,7 +289,7 @@ void Editor::editRow(char c)
         }
     }
 
-    row->insert(cursor_x + coloff, 1, c);
+    row->insert(cursor_x + coloff, 1, c); // Insert the character at the current position
     cursor_x++;
 }
 
@@ -311,7 +313,7 @@ bool Editor::escCase(char c)
                 getWindowSize();
                 switch (seq[1])
                 {
-                case '3': // deletue
+                case '3': // delete
                     delCase();
                     return false;
                 case '1':
@@ -505,6 +507,7 @@ void Editor::backCase()
     {
         if (numrows > 1)
         {
+            // Remove the character before the cursor position
             rows.erase(rows.begin() + filerow);
             numrows--;
         }
@@ -561,6 +564,7 @@ void Editor::delCase()
     {
         if (numrows > 1)
         {
+            // Remove the character at the cursor position
             rows.erase(rows.begin() + filerow);
             numrows--;
         }
@@ -618,7 +622,7 @@ void Editor::saveToFileText(const std::string &filename)
     for (auto &str : rows)
     {
         str_trim(str);
-        outFile << str << '\n'; // Użyj '\n' jako separatora linii
+        outFile << str << '\n';
     }
 
     outFile.close();
